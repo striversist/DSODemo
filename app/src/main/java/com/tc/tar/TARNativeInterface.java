@@ -9,7 +9,7 @@ public class TARNativeInterface {
 
     public static native void dsoInit(String calibPath);
     public static native void dsoRelease();
-    public static native void dsoStart();
+    public static native int dsoOnFrame(int width, int height, byte[] data, int format);
     public static native float[] dsoGetIntrinsics();
     public static native int[] dsoGetResolution();
     public static native float[] dsoGetCurrentPose();

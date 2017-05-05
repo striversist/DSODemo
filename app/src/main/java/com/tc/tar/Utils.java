@@ -101,4 +101,55 @@ public class Utils {
             out.write(buffer, 0, read);
         }
     }
+
+    public static String getInnerSDCardPath() {
+        return Environment.getExternalStorageDirectory().getPath();
+    }
+
+    public static byte [] getNV12(int inputWidth, int inputHeight, Bitmap scaled) {
+        // Reference (Variation) : https://gist.github.com/wobbals/5725412
+
+        int [] argb = new int[inputWidth * inputHeight];
+
+        //Log.i(TAG, "scaled : " + scaled);
+        scaled.getPixels(argb, 0, inputWidth, 0, 0, inputWidth, inputHeight);
+
+        byte [] yuv = new byte[inputWidth*inputHeight*3/2];
+        encodeYUV420SP(yuv, argb, inputWidth, inputHeight);
+
+        scaled.recycle();
+
+        return yuv;
+    }
+
+    public static void encodeYUV420SP(byte[] yuv420sp, int[] argb, int width, int height) {
+        final int frameSize = width * height;
+
+        int yIndex = 0;
+        int uvIndex = frameSize;
+
+        int R, G, B, Y, U, V;
+        int index = 0;
+        for (int j = 0; j < height; j++) {
+            for (int i = 0; i < width; i++) {
+
+                R = (argb[index] & 0xff000000) >>> 24;
+                G = (argb[index] & 0xff0000) >> 16;
+                B = (argb[index] & 0xff00) >> 8;
+
+                // well known RGB to YUV algorithm
+                Y = ( (  66 * R + 129 * G +  25 * B + 128) >> 8) +  16;
+                V = ( ( -38 * R -  74 * G + 112 * B + 128) >> 8) + 128; // Previously U
+                U = ( ( 112 * R -  94 * G -  18 * B + 128) >> 8) + 128; // Previously V
+
+                yuv420sp[yIndex++] = (byte) ((Y < 0) ? 0 : ((Y > 255) ? 255 : Y));
+                if (j % 2 == 0 && index % 2 == 0) {
+                    yuv420sp[uvIndex++] = (byte)((V<0) ? 0 : ((V > 255) ? 255 : V));
+                    yuv420sp[uvIndex++] = (byte)((U<0) ? 0 : ((U > 255) ? 255 : U));
+                }
+
+                index ++;
+            }
+        }
+    }
 }
