@@ -107,6 +107,10 @@ public class Utils {
     }
 
     public static byte [] getNV12(int inputWidth, int inputHeight, Bitmap scaled) {
+        return getNV12(inputWidth, inputHeight, scaled, true);
+    }
+
+    public static byte [] getNV12(int inputWidth, int inputHeight, Bitmap scaled, boolean recycled) {
         // Reference (Variation) : https://gist.github.com/wobbals/5725412
 
         int [] argb = new int[inputWidth * inputHeight];
@@ -117,7 +121,8 @@ public class Utils {
         byte [] yuv = new byte[inputWidth*inputHeight*3/2];
         encodeYUV420SP(yuv, argb, inputWidth, inputHeight);
 
-        scaled.recycle();
+        if (recycled)
+            scaled.recycle();
 
         return yuv;
     }
