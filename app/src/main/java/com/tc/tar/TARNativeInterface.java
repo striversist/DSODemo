@@ -13,7 +13,7 @@ public class TARNativeInterface {
     public static native int dsoOnFrameByPath(String path);
     public static native float[] dsoGetIntrinsics();
     public static native float[] dsoGetCurrentPose();
-    public static native Object[] dsoGetAllKeyFrames();
+    public static native DSOPointCloud dsoGetPointCloud();
     public static native int dsoGetKeyFrameCount();
     public static native byte[] dsoGetCurrentImage();
 }
