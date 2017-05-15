@@ -18,6 +18,7 @@ import org.rajawali3d.view.ISurface;
 import org.rajawali3d.view.SurfaceView;
 
 import java.io.File;
+import java.nio.ByteBuffer;
 
 public class DSOActivity extends AppCompatActivity implements DSORenderer.RenderListener {
 
@@ -32,6 +33,8 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
     private Renderer mRenderer;
     private ImageView mImageView;
     private boolean mStopped = false;
+    private VideoSource mVideoSource;
+    private boolean mStarted = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -52,6 +55,9 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
         imageParams.addRule(RelativeLayout.ALIGN_PARENT_RIGHT);
         imageParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         mLayout.addView(mImageView, imageParams);
+
+        mVideoSource = new VideoSource(this, Constants.WIDTH, Constants.HEIGHT);
+        mVideoSource.start();
 
         setContentView(mLayout);
     }
@@ -123,6 +129,7 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
             System.exit(0);
         } else if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             Toast.makeText(this, "Start", Toast.LENGTH_SHORT).show();
+//            mStarted = true;
             start();
             return true;
         } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
@@ -135,6 +142,33 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
 
     @Override
     public void onRender() {
+        if (mImageView == null)
+            return;
 
+        byte[] imgData;
+        byte[] frameData = mVideoSource.getFrame();     // YUV data
+        if (frameData == null)
+            return;
+
+        imgData = new byte[Constants.WIDTH * Constants.HEIGHT * 4];
+        for (int i = 0; i < imgData.length / 4; ++i) {
+            imgData[i * 4] = frameData[i];
+            imgData[i * 4 + 1] = frameData[i];
+            imgData[i * 4 + 2] = frameData[i];
+            imgData[i * 4 + 3] = (byte) 0xff;
+        }
+
+        final Bitmap bm = Bitmap.createBitmap(Constants.WIDTH, Constants.HEIGHT, Bitmap.Config.ARGB_8888);
+        bm.copyPixelsFromBuffer(ByteBuffer.wrap(imgData));
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                mImageView.setImageBitmap(bm);
+            }
+        });
+
+        if (mStarted) {
+            TARNativeInterface.dsoOnFrameByData(Constants.WIDTH, Constants.HEIGHT, frameData, 0);
+        }
     }
 }

@@ -27,7 +27,7 @@ import java.util.Stack;
 
 public class DSORenderer extends Renderer {
 
-    private static final int MAX_POINTS = 20000;
+    private static final int MAX_POINTS = 200000;
     private RenderListener mRenderListener;
     private Object3D mCurrentCameraFrame;
     private float intrinsics[];
@@ -71,8 +71,10 @@ public class DSORenderer extends Renderer {
     @Override
     protected void onRender(long ellapsedRealtime, double deltaTime) {
         super.onRender(ellapsedRealtime, deltaTime);
+
         drawFrustum();
         drawPoints();
+
         if (mRenderListener != null) {
             mRenderListener.onRender();
         }
