@@ -2,6 +2,7 @@ package com.tc.tar;
 
 import android.content.Context;
 import android.opengl.GLES20;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.widget.Toast;
 
@@ -27,6 +28,7 @@ import java.util.Stack;
 
 public class DSORenderer extends Renderer {
 
+    public static final String TAG = DSORenderer.class.getSimpleName();
     private static final int MAX_POINTS = 200000;
     private RenderListener mRenderListener;
     private Object3D mCurrentCameraFrame;
@@ -48,7 +50,7 @@ public class DSORenderer extends Renderer {
         intrinsics = TARNativeInterface.dsoGetIntrinsics();
 
         ArcballCamera arcball = new ArcballCamera(mContext, ((DSOActivity)mContext).getView());
-        arcball.setPosition(0, -2, -5);
+        arcball.setPosition(0, -4, 0);
         arcball.setNearPlane(0.1);
         arcball.setFarPlane(1000);
         arcball.setFieldOfView(45);
@@ -139,8 +141,8 @@ public class DSORenderer extends Renderer {
         float cy = intrinsics[1];
         float fx = intrinsics[2];
         float fy = intrinsics[3];
-        int width = Constants.WIDTH;
-        int height = Constants.HEIGHT;
+        int width = Constants.OUT_WIDTH;
+        int height = Constants.OUT_HEIGHT;
 
         float sz = 0.1f;    // sizeFactor
 

@@ -1,8 +1,9 @@
 package com.tc.tar;
 
 import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
+import android.graphics.Color;
 import android.os.Bundle;
+import android.os.Process;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -11,6 +12,7 @@ import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import org.rajawali3d.renderer.Renderer;
@@ -19,10 +21,12 @@ import org.rajawali3d.view.SurfaceView;
 
 import java.io.File;
 import java.nio.ByteBuffer;
+import java.util.Arrays;
 
 public class DSOActivity extends AppCompatActivity implements DSORenderer.RenderListener {
 
     public static final String TAG = DSOActivity.class.getSimpleName();
+    private static final boolean LOCAL_MODE = false;
     static {
         System.loadLibrary("DSO");
     }
@@ -35,6 +39,9 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
     private boolean mStopped = false;
     private VideoSource mVideoSource;
     private boolean mStarted = false;
+    private TextView mTextView;
+    private long mLastUpdateTime;
+    private int mLastUpdateIndex;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -56,8 +63,17 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
         imageParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
         mLayout.addView(mImageView, imageParams);
 
-        mVideoSource = new VideoSource(this, Constants.WIDTH, Constants.HEIGHT);
-        mVideoSource.start();
+        mTextView = new TextView(this);
+        mTextView.setTextColor(Color.YELLOW);
+        RelativeLayout.LayoutParams textParams = new RelativeLayout.LayoutParams(600, 100);
+        textParams.addRule(RelativeLayout.ALIGN_PARENT_LEFT);
+        textParams.addRule(RelativeLayout.ALIGN_PARENT_TOP);
+        mLayout.addView(mTextView, textParams);
+
+        mVideoSource = new VideoSource(this, Constants.IN_WIDTH, Constants.IN_HEIGHT);
+        if (!LOCAL_MODE) {
+            mVideoSource.start();
+        }
 
         setContentView(mLayout);
     }
@@ -90,34 +106,9 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
     }
 
     private void start() {
-        new Thread(new Runnable() {
-            @Override
-            public void run() {
-                String imgDir = Utils.getInnerSDCardPath() + "/LSD/images";
-                Log.d(TAG, "imgDir = " + imgDir);
-
-                File directory = new File(imgDir);
-                File[] files = directory.listFiles();
-                for (final File file : files) {
-                    if (mStopped)
-                        return;
-                    if (!file.getName().endsWith(".png"))
-                        continue;
-
-                    Log.d(TAG, "file: " + file.getName());
-                    TARNativeInterface.dsoOnFrameByPath(imgDir + File.separator + file.getName());
-
-//                    DSOActivity.this.runOnUiThread(new Runnable() {
-//                        @Override
-//                        public void run() {
-//                            final Bitmap bitmap = BitmapFactory.decodeFile(file.getAbsolutePath());
-//                            assert (bitmap != null);
-//                            mImageView.setImageBitmap(bitmap);
-//                        }
-//                    });
-                }
-            }
-        }).start();
+        DataThread thread = new DataThread("DSO_DataThread");
+        thread.setOSPriority(Process.THREAD_PRIORITY_URGENT_AUDIO);
+        thread.start();
     }
 
     @Override
@@ -129,8 +120,8 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
             System.exit(0);
         } else if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
             Toast.makeText(this, "Start", Toast.LENGTH_SHORT).show();
-//            mStarted = true;
             start();
+            mStarted = true;
             return true;
         } else if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
             // TODO: reset
@@ -146,19 +137,32 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
             return;
 
         byte[] imgData;
-        byte[] frameData = mVideoSource.getFrame();     // YUV data
-        if (frameData == null)
-            return;
+        int imgDataWidth = 0;
+        int imgDataHeight = 0;
+        if (!mStarted) {
+            byte[] frameData = mVideoSource.getFrame();     // YUV data
+            if (frameData == null)
+                return;
 
-        imgData = new byte[Constants.WIDTH * Constants.HEIGHT * 4];
-        for (int i = 0; i < imgData.length / 4; ++i) {
-            imgData[i * 4] = frameData[i];
-            imgData[i * 4 + 1] = frameData[i];
-            imgData[i * 4 + 2] = frameData[i];
-            imgData[i * 4 + 3] = (byte) 0xff;
+            imgData = new byte[Constants.IN_WIDTH * Constants.IN_HEIGHT * 4];
+            for (int i = 0; i < imgData.length / 4; ++i) {
+                imgData[i * 4] = frameData[i];
+                imgData[i * 4 + 1] = frameData[i];
+                imgData[i * 4 + 2] = frameData[i];
+                imgData[i * 4 + 3] = (byte) 0xff;
+            }
+            imgDataWidth = Constants.IN_WIDTH;
+            imgDataHeight = Constants.IN_HEIGHT;
+        } else {
+            imgData = TARNativeInterface.dsoGetCurrentImage();
+            imgDataWidth = Constants.OUT_WIDTH;
+            imgDataHeight = Constants.OUT_HEIGHT;
         }
 
-        final Bitmap bm = Bitmap.createBitmap(Constants.WIDTH, Constants.HEIGHT, Bitmap.Config.ARGB_8888);
+        if (imgData == null)
+            return;
+
+        final Bitmap bm = Bitmap.createBitmap(imgDataWidth, imgDataHeight, Bitmap.Config.ARGB_8888);
         bm.copyPixelsFromBuffer(ByteBuffer.wrap(imgData));
         runOnUiThread(new Runnable() {
             @Override
@@ -166,9 +170,66 @@ public class DSOActivity extends AppCompatActivity implements DSORenderer.Render
                 mImageView.setImageBitmap(bm);
             }
         });
+    }
 
-        if (mStarted) {
-            TARNativeInterface.dsoOnFrameByData(Constants.WIDTH, Constants.HEIGHT, frameData, 0);
+    private void refreshFrameRate(final int frameIndex) {
+        if (System.currentTimeMillis() - mLastUpdateTime < 1000) {
+            return;
+        }
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                int diffIndex = frameIndex - mLastUpdateIndex;
+                float diffTime = (float)(System.currentTimeMillis() - mLastUpdateTime) / 1000;
+                mTextView.setText("Frame Rate: " + (float)diffIndex / diffTime + " fps\ncurrent index: " + frameIndex);
+
+                mLastUpdateTime = System.currentTimeMillis();
+                mLastUpdateIndex = frameIndex;
+            }
+        });
+
+    }
+
+    private class DataThread extends Thread {
+        private int mOSPriority = Process.THREAD_PRIORITY_DEFAULT;
+
+        public DataThread(String threadName) {
+            super(threadName);
+        }
+
+        public void setOSPriority(int priority) {
+            mOSPriority = priority;
+        }
+
+        @Override
+        public void run() {
+            Process.setThreadPriority(mOSPriority);
+            mLastUpdateTime = System.currentTimeMillis();
+
+            int i = 0;
+            String imgDir = Utils.getInnerSDCardPath() + "/LSD/images";
+
+            if (LOCAL_MODE) {
+                File directory = new File(imgDir);
+                File[] files = directory.listFiles();
+                Arrays.sort(files);
+                for (final File file : files) {
+                    if (mStopped)
+                        return;
+                    if (!file.getName().endsWith(".png"))
+                        continue;
+                    TARNativeInterface.dsoOnFrameByPath(imgDir + File.separator + file.getName());
+                    refreshFrameRate(i++);
+                }
+            } else {
+                while (!mStopped) {
+                    byte[] frameData = mVideoSource.getFrame();     // YUV data
+                    if (frameData != null) {
+                        TARNativeInterface.dsoOnFrameByData(Constants.IN_WIDTH, Constants.IN_HEIGHT, frameData, 0);
+                        refreshFrameRate(i++);
+                    }
+                }
+            }
         }
     }
 }
